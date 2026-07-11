@@ -59,7 +59,7 @@ propertyscan export -i walk.mp4 -o ./_out --profile colab_t4 \
 **Dataset ZIP:** MediaFire archive (see guide) · **Code:** https://github.com/moizogg/3d-ai  
 
 1. Runtime → GPU (T4)  
-2. Clone/upload repo → `cd revamped_code`  
+2. Clone `moizogg/3d-ai` → **`cd /content/3d-ai`** (repo root = package root; not a nested `revamped_code/`)  
 3. Download/unzip dataset (wget or manual upload if MediaFire blocks)  
 4. Mock export first (progress every 10s)  
 5. Install dust3r/mast3r (Phase 4)  

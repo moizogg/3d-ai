@@ -47,6 +47,8 @@ Produces: `scene.ply`, `property_scene.json`, `final_report.json`, `provenance.j
 3. Operator overview: [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)  
 4. MASt3R install detail: [`docs/PHASE4_WALKTHROUGH.md`](docs/PHASE4_WALKTHROUGH.md)  
 
+**Colab working directory:** `/content/3d-ai` (GitHub repo root — package files live there, not under `revamped_code/`).
+
 Live progress: every stage prints `[PROGRESS] …` **every 10 seconds** so you know it is not stuck.  
 
 ```bash

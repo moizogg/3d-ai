@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PropertyScan — Colab Real Test Guide (copy each cell)</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #9aa8bc;
+      --accent: #3d8bfd;
+      --accent2: #2ea043;
+      --code-bg: #0d1117;
+      --warn: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      padding: 1.5rem;
+      max-width: 920px;
+      margin-inline: auto;
+    }
+    h1 { font-size: 1.6rem; margin-top: 0; }
+    h2 { font-size: 1.25rem; margin-top: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    h3 { font-size: 1.05rem; margin: 1.4rem 0 0.5rem; color: #c9d4e3; }
+    a { color: var(--accent); }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); font-size: 0.95rem; }
+    .note {
+      background: #1c2a1c;
+      border: 1px solid #2f4f2f;
+      border-left: 4px solid var(--accent2);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
+    .warn {
+      background: #2a2414;
+      border: 1px solid #5c4a1a;
+      border-left: 4px solid var(--warn);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95rem; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 0.65rem; text-align: left; }
+    th { background: var(--card); }
+    .cell {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 1rem 0 1.5rem;
+      overflow: hidden;
+    }
+    .cell-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.55rem 0.85rem;
+      background: #121a24;
+      border-bottom: 1px solid var(--border);
+    }
+    .cell-title { font-weight: 600; font-size: 0.95rem; }
+    .cell-sub { color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+    .copy-btn {
+      flex-shrink: 0;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: #243044;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .copy-btn:hover { background: #2f3f58; border-color: var(--accent); }
+    .copy-btn.copied { background: #1a3d2a; border-color: var(--accent2); color: #7ee787; }
+    pre {
+      margin: 0;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      background: var(--code-bg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      white-space: pre;
+    }
+    code { font-family: inherit; }
+    .toc a { text-decoration: none; }
+    .toc li { margin: 0.25rem 0; }
+    kbd {
+      background: #243044;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <h1>PropertyScan — Colab Real Test Guide</h1>
+  <p class="muted">
+    Open this file in a <strong>browser</strong> (double-click or “Open with Live Preview”) to get a
+    <strong>Copy</strong> button on every cell. Working directory: <kbd>/content/3d-ai</kbd> (GitHub repo root).
+  </p>
+
+  <div class="note">
+    <strong>Code:</strong> <a href="https://github.com/moizogg/3d-ai" target="_blank" rel="noopener">github.com/moizogg/3d-ai</a><br />
+    <strong>Dataset:</strong>
+    <a href="https://download853.mediafire.com/rtmlk9ypemegyIXh1yTx9nFxnjYYGn5l5Y7jgmzy4HCb7cekTEY__64r_wSqKfc3Cns4Iohj56JzG_hKv6SpxVLLkM8y_ucaQCHgrNLuS14oFWQmjlp4IuwbXMKOG3aP7MOpotpk3DGZor2n-Kk5rH-m3LedwvDJXId-PhLfrTqM_Q/zknvd5nfvsygnsr/archive.zip" target="_blank" rel="noopener">MediaFire archive.zip</a><br />
+    <strong>Progress:</strong> every ~10s you should see <code>[PROGRESS] … still running…</code>
+  </div>
+
+  <div class="warn">
+    <strong>Working directory for ALL cells:</strong> <code>/content/3d-ai</code><br />
+    Package is at the <em>repo root</em> (<code>propertyscan/</code>, <code>pyproject.toml</code>). Do <strong>not</strong> use <code>/content/3d-ai/revamped_code</code>.
+  </div>
+
+  <h2>Order of cells</h2>
+  <ol class="toc">
+    <li><a href="#a1">A1 — GPU check</a></li>
+    <li><a href="#a2">A2 — Clone GitHub</a></li>
+    <li><a href="#a3">A3 — Install package</a></li>
+    <li><a href="#b1">B1 — Download MediaFire ZIP</a></li>
+    <li><a href="#b1alt">B1-alt — Confirm manual upload</a></li>
+    <li><a href="#b2">B2 — Unzip + find INPUT</a></li>
+    <li><a href="#c1">C1 — Mock export (smoke)</a></li>
+    <li><a href="#c2">C2 — Install MASt3R stack</a></li>
+    <li><a href="#c3">C3 — Real MASt3R geometry</a></li>
+    <li><a href="#c4">C4 — Real export (mast3r + mock train)</a></li>
+    <li><a href="#c6">C6 — Download results</a></li>
+  </ol>
+
+  <h2>Before you start</h2>
+  <ol>
+    <li>Colab → <strong>Runtime → Change runtime type → GPU (T4)</strong></li>
+    <li>Clone works from public GitHub, or upload a zip of your <code>3d-ai</code> project</li>
+    <li>If MediaFire wget fails, download on PC and upload <code>archive.zip</code> to <code>/content/data/</code></li>
+  </ol>
+
+  <!-- ========== CELLS ========== -->
+
+  <h2 id="a1">Part A — Code setup</h2>
+
+  <div class="cell" id="cell-a1">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell A1 — GPU check</div>
+        <div class="cell-sub">Paste into one Colab cell and run</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-a1">Copy</button>
+    </div>
+    <pre id="code-a1"><code>!nvidia-smi
+import torch
+print("CUDA:", torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else None)</code></pre>
+  </div>
+
+  <div class="cell" id="cell-a2">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell A2 — Clone GitHub repo</div>
+        <div class="cell-sub">Ends in /content/3d-ai (repo root)</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-a2">Copy</button>
+    </div>
+    <pre id="code-a2"><code>from pathlib import Path
+
+%cd /content
+REPO = "https://github.com/moizogg/3d-ai.git"
+DIR = Path("/content/3d-ai")
+
+if not DIR.exists():
+    !git clone --depth 1 {REPO}
+else:
+    print("Repo already present:", DIR)
+
+%cd /content/3d-ai
+!pwd
+!ls -la
+!ls propertyscan configs pyproject.toml</code></pre>
+  </div>
+
+  <div class="cell" id="cell-a3">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell A3 — Install PropertyScan</div>
+        <div class="cell-sub">Must run from /content/3d-ai</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-a3">Copy</button>
+    </div>
+    <pre id="code-a3"><code>%cd /content/3d-ai
+!pip -q install -e ".[dev]"
+!propertyscan version
+!propertyscan doctor --profile colab_t4</code></pre>
+  </div>
+
+  <h2 id="b1">Part B — Dataset</h2>
+
+  <div class="cell" id="cell-b1">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell B1 — Download MediaFire ZIP</div>
+        <div class="cell-sub">If this fails (403), use B1-alt (manual upload)</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-b1">Copy</button>
+    </div>
+    <pre id="code-b1"><code>from pathlib import Path
+
+DATA = Path("/content/data")
+DATA.mkdir(parents=True, exist_ok=True)
+ZIP = DATA / "archive.zip"
+
+URL = "https://download853.mediafire.com/rtmlk9ypemegyIXh1yTx9nFxnjYYGn5l5Y7jgmzy4HCb7cekTEY__64r_wSqKfc3Cns4Iohj56JzG_hKv6SpxVLLkM8y_ucaQCHgrNLuS14oFWQmjlp4IuwbXMKOG3aP7MOpotpk3DGZor2n-Kk5rH-m3LedwvDJXId-PhLfrTqM_Q/zknvd5nfvsygnsr/archive.zip"
+
+!wget -c -O "{ZIP}" "{URL}" || true
+print("size_mb", ZIP.stat().st_size / 1e6 if ZIP.exists() else "MISSING")</code></pre>
+  </div>
+
+  <div class="cell" id="cell-b1alt">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell B1-alt — Confirm manual upload</div>
+        <div class="cell-sub">After uploading archive.zip to /content/data/</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-b1alt">Copy</button>
+    </div>
+    <pre id="code-b1alt"><code>from pathlib import Path
+
+ZIP = Path("/content/data/archive.zip")
+assert ZIP.exists() and ZIP.stat().st_size > 1_000_000, "Upload archive.zip to /content/data/ first"
+print("OK", ZIP, "MB", ZIP.stat().st_size / 1e6)</code></pre>
+  </div>
+
+  <div class="cell" id="cell-b2">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell B2 — Unzip + find INPUT</div>
+        <div class="cell-sub">Sets Python variable INPUT for later cells</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-b2">Copy</button>
+    </div>
+    <pre id="code-b2"><code>from pathlib import Path
+import zipfile
+
+DATA = Path("/content/data")
+ZIP = DATA / "archive.zip"
+EXTRACT = DATA / "kaggle_scene"
+EXTRACT.mkdir(parents=True, exist_ok=True)
+
+with zipfile.ZipFile(ZIP, "r") as zf:
+    zf.extractall(EXTRACT)
+
+print("Top-level:")
+for p in sorted(EXTRACT.iterdir())[:40]:
+    print(" ", p.name, "DIR" if p.is_dir() else f"file {p.stat().st_size}")
+
+VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+
+def find_input(root: Path):
+    vids = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT]
+    if vids:
+        return sorted(vids, key=lambda p: -p.stat().st_size)[0]
+    best, best_n = None, 0
+    for d in [root] + [p for p in root.rglob("*") if p.is_dir()]:
+        try:
+            n = sum(1 for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMG_EXT)
+        except Exception:
+            n = 0
+        if n > best_n:
+            best, best_n = d, n
+    return best
+
+INPUT = find_input(EXTRACT)
+print("INPUT =>", INPUT)
+assert INPUT is not None, "Could not find video or image folder"</code></pre>
+  </div>
+
+  <h2 id="c1">Part C — Run pipeline</h2>
+  <p class="muted">Always run mock (C1) before real MASt3R. You should see <code>[PROGRESS]</code> every 10 seconds.</p>
+
+  <div class="cell" id="cell-c1">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell C1 — SMOKE export (mock)</div>
+        <div class="cell-sub">No heavy models — proves paths + progress</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-c1">Copy</button>
+    </div>
+    <pre id="code-c1"><code>%cd /content/3d-ai
+from pathlib import Path
+
+OUT = Path("/content/out_mock")
+OUT.mkdir(exist_ok=True)
+
+# Uses INPUT from Cell B2
+!propertyscan export --input "{INPUT}" --out "{OUT}" --profile colab_t4 --engine mock --train-backend mock
+
+!ls -la "{OUT}"
+print("scene.ply exists:", (OUT / "scene.ply").exists())
+print("final_report:", (OUT / "final_report.json").exists())</code></pre>
+  </div>
+
+  <div class="cell" id="cell-c2">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell C2 — Install MASt3R / DUSt3R / Depth</div>
+        <div class="cell-sub">Only after C1 mock succeeds</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-c2">Copy</button>
+    </div>
+    <pre id="code-c2"><code>!pip -q install transformers einops opencv-python-headless
+
+!git clone --recursive https://github.com/naver/dust3r /content/dust3r
+!pip -q install -e /content/dust3r
+
+!git clone --recursive https://github.com/naver/mast3r /content/mast3r
+!pip -q install -e /content/mast3r
+
+%cd /content/3d-ai
+!propertyscan doctor --profile colab_t4</code></pre>
+  </div>
+
+  <div class="cell" id="cell-c3">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell C3 — Real MASt3R geometry</div>
+        <div class="cell-sub">First run downloads multi‑GB weights; progress every 10s</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-c3">Copy</button>
+    </div>
+    <pre id="code-c3"><code>%cd /content/3d-ai
+from pathlib import Path
+
+OUT_G = Path("/content/out_mast3r_geo")
+OUT_G.mkdir(exist_ok=True)
+
+!propertyscan geometry --input "{INPUT}" --out "{OUT_G}" --profile colab_t4 --engine mast3r
+
+!ls -la "{OUT_G}"
+!python -c "from pathlib import Path; p=Path('/content/out_mast3r_geo/geometry_report.json'); print(p.read_text()[:2000] if p.exists() else 'no report')"</code></pre>
+  </div>
+
+  <div class="cell" id="cell-c4">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell C4 — Real export (mast3r + mock train)</div>
+        <div class="cell-sub">Product files: scene.ply + reports</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-c4">Copy</button>
+    </div>
+    <pre id="code-c4"><code>%cd /content/3d-ai
+from pathlib import Path
+
+OUT_R = Path("/content/out_real_export")
+OUT_R.mkdir(exist_ok=True)
+
+!propertyscan export --input "{INPUT}" --out "{OUT_R}" --profile colab_t4 --engine mast3r --train-backend mock
+
+!ls -la "{OUT_R}"
+!python -c "import json; from pathlib import Path; p=Path('/content/out_real_export/final_report.json'); print(json.dumps(json.loads(p.read_text()), indent=2)[:2500] if p.exists() else 'missing')"</code></pre>
+  </div>
+
+  <div class="cell" id="cell-c6">
+    <div class="cell-head">
+      <div>
+        <div class="cell-title">Cell C6 — Download results to PC</div>
+        <div class="cell-sub">Zips scene.ply + reports</div>
+      </div>
+      <button type="button" class="copy-btn" data-target="code-c6">Copy</button>
+    </div>
+    <pre id="code-c6"><code>from google.colab import files
+from pathlib import Path
+import shutil
+
+OUT = Path("/content/out_real_export")
+bundle = Path("/content/propertyscan_results")
+if bundle.exists():
+    shutil.rmtree(bundle)
+bundle.mkdir()
+
+for name in ["scene.ply", "property_scene.json", "final_report.json", "provenance.json"]:
+    src = OUT / name
+    if src.exists():
+        shutil.copy2(src, bundle / name)
+
+!zip -r /content/propertyscan_results.zip /content/propertyscan_results
+files.download("/content/propertyscan_results.zip")</code></pre>
+  </div>
+
+  <h2>Progress lines (healthy)</h2>
+  <div class="cell">
+    <div class="cell-head">
+      <div class="cell-title">What you should see every ~10s</div>
+      <button type="button" class="copy-btn" data-target="code-progress">Copy</button>
+    </div>
+    <pre id="code-progress"><code>[PROGRESS] stage:frame_quality | started | elapsed=0s
+[PROGRESS] stage:frame_quality | still running… status=measure 40/200 | tick=2 | elapsed=20s
+[PROGRESS] mast3r_foundation | pair inference (batch=1) — GPU busy | elapsed=90s
+[PROGRESS] mast3r_foundation | global alignment (can take several minutes) | elapsed=180s
+[PROGRESS] stage:export | finished OK | elapsed=2.1s
+✅ Export pipeline complete.</code></pre>
+  </div>
+
+  <h2>Troubleshooting</h2>
+  <table>
+    <tr><th>Problem</th><th>Fix</th></tr>
+    <tr><td>MediaFire 403 / tiny file</td><td>Manual upload to <code>/content/data/archive.zip</code></td></tr>
+    <tr><td><code>No module named propertyscan</code></td><td><code>%cd /content/3d-ai</code> then <code>pip install -e .</code></td></tr>
+    <tr><td>Wrong folder</td><td>Stay in <code>/content/3d-ai</code> (not revamped_code)</td></tr>
+    <tr><td>MASt3R missing</td><td>Run Cell C2</td></tr>
+    <tr><td>CUDA OOM</td><td>Use fewer frames; <code>colab_t4</code> profile already uses swin-5</td></tr>
+    <tr><td>No [PROGRESS] lines</td><td>Reinstall package from latest GitHub with <code>core/progress.py</code></td></tr>
+  </table>
+
+  <p class="muted" style="margin-top:2rem">
+    Tip: open this HTML from your project: <code>revamped_code/docs/COLAB_REAL_TEST_GUIDE.html</code>
+    (or from the repo root <code>docs/</code> after you push).
+  </p>
+
+  <script>
+    document.querySelectorAll(".copy-btn").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var id = btn.getAttribute("data-target");
+        var el = document.getElementById(id);
+        if (!el) return;
+        var text = el.innerText.replace(/\n$/, "");
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (e) {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+        var old = btn.textContent;
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(function () {
+          btn.textContent = old;
+          btn.classList.remove("copied");
+        }, 1500);
+      });
+    });
+  </script>
+</body>
+</html>
