@@ -14,6 +14,7 @@ from propertyscan.domain.depth import DepthMap, DepthResult
 from propertyscan.domain.frames import FrameSet
 from propertyscan.geometry.depth.base import DepthProvider
 from propertyscan.geometry.deps import INSTALL_HINT_DEPTH, probe_depth_anything, probe_torch
+from propertyscan.core.progress import ProgressHeartbeat
 from propertyscan.geometry.runtime import empty_cache, peak_vram_gb, reset_peak_vram
 
 logger = logging.getLogger("propertyscan.geometry.depth.anything_v2")
@@ -148,53 +149,57 @@ class DepthAnythingV2Provider(DepthProvider):
         max_res = config.depth.max_resolution
         errors = 0
 
-        for i, fr in enumerate(accepted):
-            try:
-                img = Image.open(fr.filepath).convert("RGB")
-                w0, h0 = img.size
-                if max(w0, h0) > max_res:
-                    scale = max_res / float(max(w0, h0))
-                    img = img.resize(
-                        (max(1, int(w0 * scale)), max(1, int(h0 * scale))),
-                        Image.Resampling.BILINEAR,
-                    )
-                res = pipe(img)
-                depth_img = res["depth"]
-                depth_np = np.array(depth_img, dtype=np.float32)
-                dmin, dmax = float(depth_np.min()), float(depth_np.max())
-                if dmax > dmin:
-                    depth_u16 = ((depth_np - dmin) / (dmax - dmin) * 65535.0).astype(
-                        np.uint16
-                    )
-                else:
-                    depth_u16 = np.zeros_like(depth_np, dtype=np.uint16)
+        with ProgressHeartbeat("depth_anything_v2", interval_s=10.0) as hb:
+            for i, fr in enumerate(accepted):
+                if i == 0 or (i + 1) % 5 == 0 or i + 1 == n:
+                    hb.set_status(f"depth {i + 1}/{n}: {fr.filename}")
+                try:
+                    img = Image.open(fr.filepath).convert("RGB")
+                    w0, h0 = img.size
+                    if max(w0, h0) > max_res:
+                        scale = max_res / float(max(w0, h0))
+                        img = img.resize(
+                            (max(1, int(w0 * scale)), max(1, int(h0 * scale))),
+                            Image.Resampling.BILINEAR,
+                        )
+                    res = pipe(img)
+                    depth_img = res["depth"]
+                    depth_np = np.array(depth_img, dtype=np.float32)
+                    dmin, dmax = float(depth_np.min()), float(depth_np.max())
+                    if dmax > dmin:
+                        depth_u16 = (
+                            (depth_np - dmin) / (dmax - dmin) * 65535.0
+                        ).astype(np.uint16)
+                    else:
+                        depth_u16 = np.zeros_like(depth_np, dtype=np.uint16)
 
-                # Resize back to original frame size for alignment
-                depth_pil = Image.fromarray(depth_u16, mode="I;16")
-                if depth_pil.size != (w0, h0):
-                    depth_pil = depth_pil.resize((w0, h0), Image.Resampling.NEAREST)
+                    depth_pil = Image.fromarray(depth_u16, mode="I;16")
+                    if depth_pil.size != (w0, h0):
+                        depth_pil = depth_pil.resize(
+                            (w0, h0), Image.Resampling.NEAREST
+                        )
 
-                out_file = output_dir / f"{Path(fr.filename).stem}.png"
-                depth_pil.save(out_file)
-                maps.append(
-                    DepthMap(
-                        image_id=str(i),
-                        image_name=fr.filename,
-                        path=out_file,
-                        width=w0,
-                        height=h0,
-                        scale="relative",
-                        min_depth=dmin,
-                        max_depth=dmax,
+                    out_file = output_dir / f"{Path(fr.filename).stem}.png"
+                    depth_pil.save(out_file)
+                    maps.append(
+                        DepthMap(
+                            image_id=str(i),
+                            image_name=fr.filename,
+                            path=out_file,
+                            width=w0,
+                            height=h0,
+                            scale="relative",
+                            min_depth=dmin,
+                            max_depth=dmax,
+                        )
                     )
-                )
-            except Exception as err:
-                errors += 1
-                logger.warning("Depth failed for %s: %s", fr.filename, err)
+                except Exception as err:
+                    errors += 1
+                    logger.warning("Depth failed for %s: %s", fr.filename, err)
 
-        empty_cache()
-        del pipe
-        empty_cache()
+            empty_cache()
+            del pipe
+            empty_cache()
 
         if not maps:
             return DepthResult(

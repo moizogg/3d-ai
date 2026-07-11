@@ -18,6 +18,7 @@ from propertyscan.geometry.deps import (
     probe_mast3r,
     probe_torch,
 )
+from propertyscan.core.progress import ProgressHeartbeat
 from propertyscan.geometry.runtime import (
     choose_pair_graph,
     empty_cache,
@@ -141,172 +142,177 @@ def run_foundation_reconstruction(
     reset_peak_vram()
     empty_cache()
 
-    try:
-        from dust3r.inference import inference
-        from dust3r.image_pairs import make_pairs
-        from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
-
-        # load_images is the robust path; fall back to path strings if needed
+    with ProgressHeartbeat(f"{engine}_foundation", interval_s=10.0) as hb:
         try:
-            from dust3r.utils.image import load_images
+            from dust3r.inference import inference
+            from dust3r.image_pairs import make_pairs
+            from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 
-            images = load_images([str(p) for p in paths], size=image_size)
-        except Exception as load_exc:
-            logger.warning("load_images failed (%s); trying raw paths", load_exc)
-            images = [str(p) for p in paths]
-
-        if engine == "mast3r":
-            from mast3r.model import AsymmetricMASt3R
-
-            model = AsymmetricMASt3R.from_pretrained(model_id).to(device)
-        else:
-            from dust3r.model import AsymmetricCroCo3DStereo
-
-            model = AsymmetricCroCo3DStereo.from_pretrained(model_id).to(device)
-
-        model.eval()
-        pairs = make_pairs(images, scene_graph=graph, prefilter=None, symmetrize=True)
-        logger.info(
-            "%s inference: %d images, pair_graph=%s, batch_size=%d, device=%s",
-            engine,
-            len(paths),
-            graph,
-            batch_size,
-            device,
-        )
-        output = inference(pairs, model, device, batch_size=batch_size, verbose=True)
-
-        scene = global_aligner(
-            output, device=device, mode=GlobalAlignerMode.PointCloudOptimizer
-        )
-        # cosine schedule often more stable than linear for indoor walks
-        try:
-            loss = scene.compute_global_alignment(
-                init="mst",
-                niter=int(global_align_iters),
-                schedule="cosine",
-                lr=0.01,
-            )
-        except TypeError:
-            loss = scene.compute_global_alignment(
-                init="mst",
-                niter=int(global_align_iters),
-                schedule="linear",
-                lr=0.01,
-            )
-
-        try:
-            scene.clean_pointcloud()
-        except Exception as clean_exc:
-            logger.warning("clean_pointcloud skipped: %s", clean_exc)
-
-        try:
-            scene.save_ply(str(ply_path))
-        except Exception as ply_exc:
-            logger.warning("save_ply failed: %s", ply_exc)
-            ply_path = None  # type: ignore[assignment]
-
-        im_poses = scene.get_im_poses()
-        focals = scene.get_focals()
-        poses_list = [_to_list_pose(p) for p in im_poses]
-        focals_list = [_to_float(f) for f in focals]
-
-        # Per-camera confidence from scene if available
-        confs: list[float] = []
-        try:
-            # Some versions expose get_conf / im_conf
-            if hasattr(scene, "im_conf"):
-                for c in scene.im_conf:
-                    confs.append(float(_to_float(c.mean() if hasattr(c, "mean") else c)))
-            elif hasattr(scene, "get_conf"):
-                raw = scene.get_conf()
-                for c in raw:
-                    confs.append(float(_to_float(c.mean() if hasattr(c, "mean") else c)))
-        except Exception:
-            confs = []
-        if len(confs) != len(poses_list):
-            confs = [0.8] * len(poses_list)
-
-        point_count = 0
-        try:
-            if hasattr(scene, "get_pts3d"):
-                pts = scene.get_pts3d()
-                # list of tensors per image
-                if isinstance(pts, (list, tuple)):
-                    point_count = int(sum(int(p.reshape(-1, 3).shape[0]) for p in pts))
-                else:
-                    point_count = int(pts.reshape(-1, 3).shape[0])
-        except Exception:
-            point_count = 0
-
-        # Free model ASAP
-        del model
-        empty_cache()
-
-        loss_val = None
-        if loss is not None:
+            hb.set_status(f"loading images ({len(paths)})")
             try:
-                loss_val = float(loss)
+                from dust3r.utils.image import load_images
+
+                images = load_images([str(p) for p in paths], size=image_size)
+            except Exception as load_exc:
+                logger.warning("load_images failed (%s); trying raw paths", load_exc)
+                images = [str(p) for p in paths]
+
+            hb.set_status(f"loading model {model_id}")
+            if engine == "mast3r":
+                from mast3r.model import AsymmetricMASt3R
+
+                model = AsymmetricMASt3R.from_pretrained(model_id).to(device)
+            else:
+                from dust3r.model import AsymmetricCroCo3DStereo
+
+                model = AsymmetricCroCo3DStereo.from_pretrained(model_id).to(device)
+
+            model.eval()
+            hb.set_status(f"building pairs graph={graph}")
+            pairs = make_pairs(images, scene_graph=graph, prefilter=None, symmetrize=True)
+            logger.info(
+                "%s inference: %d images, pair_graph=%s, batch_size=%d, device=%s",
+                engine,
+                len(paths),
+                graph,
+                batch_size,
+                device,
+            )
+            hb.set_status(f"pair inference (batch={batch_size}) — GPU busy")
+            output = inference(pairs, model, device, batch_size=batch_size, verbose=True)
+
+            hb.set_status("global alignment (can take several minutes)")
+            scene = global_aligner(
+                output, device=device, mode=GlobalAlignerMode.PointCloudOptimizer
+            )
+            try:
+                loss = scene.compute_global_alignment(
+                    init="mst",
+                    niter=int(global_align_iters),
+                    schedule="cosine",
+                    lr=0.01,
+                )
+            except TypeError:
+                loss = scene.compute_global_alignment(
+                    init="mst",
+                    niter=int(global_align_iters),
+                    schedule="linear",
+                    lr=0.01,
+                )
+
+            hb.set_status("cleaning point cloud + export")
+            try:
+                scene.clean_pointcloud()
+            except Exception as clean_exc:
+                logger.warning("clean_pointcloud skipped: %s", clean_exc)
+
+            try:
+                scene.save_ply(str(ply_path))
+            except Exception as ply_exc:
+                logger.warning("save_ply failed: %s", ply_exc)
+                ply_path = None  # type: ignore[assignment]
+
+            im_poses = scene.get_im_poses()
+            focals = scene.get_focals()
+            poses_list = [_to_list_pose(p) for p in im_poses]
+            focals_list = [_to_float(f) for f in focals]
+
+            confs: list[float] = []
+            try:
+                if hasattr(scene, "im_conf"):
+                    for c in scene.im_conf:
+                        confs.append(
+                            float(_to_float(c.mean() if hasattr(c, "mean") else c))
+                        )
+                elif hasattr(scene, "get_conf"):
+                    raw = scene.get_conf()
+                    for c in raw:
+                        confs.append(
+                            float(_to_float(c.mean() if hasattr(c, "mean") else c))
+                        )
             except Exception:
-                loss_val = None
+                confs = []
+            if len(confs) != len(poses_list):
+                confs = [0.8] * len(poses_list)
 
-        # Validate poses (reject all-NaN)
-        valid_mask = []
-        for pose in poses_list:
-            flat = [v for row in pose for v in row]
-            valid_mask.append(all(v == v and abs(v) < 1e6 for v in flat))  # not NaN/inf
+            point_count = 0
+            try:
+                if hasattr(scene, "get_pts3d"):
+                    pts = scene.get_pts3d()
+                    if isinstance(pts, (list, tuple)):
+                        point_count = int(
+                            sum(int(p.reshape(-1, 3).shape[0]) for p in pts)
+                        )
+                    else:
+                        point_count = int(pts.reshape(-1, 3).shape[0])
+            except Exception:
+                point_count = 0
 
-        if not any(valid_mask):
+            del model
+            empty_cache()
+
+            loss_val = None
+            if loss is not None:
+                try:
+                    loss_val = float(loss)
+                except Exception:
+                    loss_val = None
+
+            valid_mask = []
+            for pose in poses_list:
+                flat = [v for row in pose for v in row]
+                valid_mask.append(all(v == v and abs(v) < 1e6 for v in flat))
+
+            if not any(valid_mask):
+                return FoundationInferResult(
+                    success=False,
+                    engine=engine,
+                    model_id=model_id,
+                    error_message="Global alignment produced no valid camera poses (NaN/inf).",
+                    execution_time_s=time.perf_counter() - t0,
+                    peak_vram_gb=peak_vram_gb(),
+                    device=device,
+                    pair_graph=graph,
+                )
+
+            for i, ok in enumerate(valid_mask):
+                if not ok:
+                    confs[i] = 0.0
+
+            hb.set_status(f"done poses={sum(1 for v in valid_mask if v)}/{len(valid_mask)}")
+            return FoundationInferResult(
+                success=True,
+                engine=engine,
+                model_id=model_id,
+                poses=poses_list,
+                focals=focals_list,
+                confidences=confs,
+                ply_path=ply_path if ply_path and Path(ply_path).exists() else None,
+                point_count=point_count,
+                pair_graph=graph,
+                global_align_loss=loss_val,
+                execution_time_s=round(time.perf_counter() - t0, 3),
+                peak_vram_gb=peak_vram_gb(),
+                device=device,
+                metadata={
+                    "image_count": len(paths),
+                    "valid_poses": sum(1 for v in valid_mask if v),
+                    "image_size": image_size,
+                    "batch_size": batch_size,
+                    "global_align_iters": global_align_iters,
+                },
+            )
+        except Exception as exc:
+            logger.exception("%s reconstruction failed", engine)
+            empty_cache()
             return FoundationInferResult(
                 success=False,
                 engine=engine,
                 model_id=model_id,
-                error_message="Global alignment produced no valid camera poses (NaN/inf).",
-                execution_time_s=time.perf_counter() - t0,
+                error_message=f"{engine} inference failed: {exc}",
+                execution_time_s=round(time.perf_counter() - t0, 3),
                 peak_vram_gb=peak_vram_gb(),
-                device=device,
+                device=device if "device" in dir() else "unknown",
                 pair_graph=graph,
+                metadata={"exception_type": type(exc).__name__},
             )
-
-        # Zero-out invalid as unregistered by replacing with identity and low conf
-        # Caller uses confidences; mark invalid conf as 0
-        for i, ok in enumerate(valid_mask):
-            if not ok:
-                confs[i] = 0.0
-
-        return FoundationInferResult(
-            success=True,
-            engine=engine,
-            model_id=model_id,
-            poses=poses_list,
-            focals=focals_list,
-            confidences=confs,
-            ply_path=ply_path if ply_path and Path(ply_path).exists() else None,
-            point_count=point_count,
-            pair_graph=graph,
-            global_align_loss=loss_val,
-            execution_time_s=round(time.perf_counter() - t0, 3),
-            peak_vram_gb=peak_vram_gb(),
-            device=device,
-            metadata={
-                "image_count": len(paths),
-                "valid_poses": sum(1 for v in valid_mask if v),
-                "image_size": image_size,
-                "batch_size": batch_size,
-                "global_align_iters": global_align_iters,
-            },
-        )
-    except Exception as exc:
-        logger.exception("%s reconstruction failed", engine)
-        empty_cache()
-        return FoundationInferResult(
-            success=False,
-            engine=engine,
-            model_id=model_id,
-            error_message=f"{engine} inference failed: {exc}",
-            execution_time_s=round(time.perf_counter() - t0, 3),
-            peak_vram_gb=peak_vram_gb(),
-            device=device if "device" in dir() else "unknown",
-            pair_graph=graph,
-            metadata={"exception_type": type(exc).__name__},
-        )

@@ -39,11 +39,15 @@ Produces: `scene.ply`, `property_scene.json`, `final_report.json`, `provenance.j
 | `benchmark` | Multi-scene + `history.jsonl` |
 | `doctor` / `config` | Environment + settings |
 
-## Colab T4
+## Colab T4 — real dataset test
 
-1. Open [`notebooks/colab_pipeline.ipynb`](notebooks/colab_pipeline.ipynb)  
-2. Follow [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)  
-3. Real models: [`docs/PHASE4_WALKTHROUGH.md`](docs/PHASE4_WALKTHROUGH.md)  
+1. **Full step-by-step (MediaFire + GitHub + every cell):**  
+   [`docs/COLAB_REAL_TEST_GUIDE.md`](docs/COLAB_REAL_TEST_GUIDE.md)  
+2. Notebook: [`notebooks/colab_real_test.ipynb`](notebooks/colab_real_test.ipynb)  
+3. Operator overview: [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)  
+4. MASt3R install detail: [`docs/PHASE4_WALKTHROUGH.md`](docs/PHASE4_WALKTHROUGH.md)  
+
+Live progress: every stage prints `[PROGRESS] …` **every 10 seconds** so you know it is not stuck.  
 
 ```bash
 propertyscan export -i walk.mp4 -o ./_out --profile colab_t4 \

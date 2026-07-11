@@ -20,6 +20,7 @@ from propertyscan.intelligence.image_ops import (
     tenengrad,
     to_gray,
 )
+from propertyscan.core.progress import ProgressHeartbeat
 from propertyscan.intelligence.motion import motion_series
 
 
@@ -106,138 +107,136 @@ def analyze_frames(paths: list[Path], config: EngineConfig) -> list[FrameMetadat
     """
     fi = config.frame_intelligence
     max_side = fi.motion_max_side
+    n_paths = len(paths)
 
-    # Pass 1 — measure
-    frames: list[FrameMetadata] = []
-    for i, p in enumerate(paths):
-        m = _measure_frame(Path(p), i, max_side=max_side)
-        if m is not None:
-            frames.append(m)
+    with ProgressHeartbeat("frame_quality", interval_s=10.0) as hb:
+        frames: list[FrameMetadata] = []
+        for i, p in enumerate(paths):
+            if i == 0 or (i + 1) % 20 == 0 or i + 1 == n_paths:
+                hb.set_status(f"measure {i + 1}/{n_paths}")
+            m = _measure_frame(Path(p), i, max_side=max_side)
+            if m is not None:
+                frames.append(m)
 
-    # Pass 2 — relative sharpness among readable frames
-    readable_idx = [
-        i
-        for i, f in enumerate(frames)
-        if f.status != FrameStatus.UNREADABLE
-    ]
-    sharp_vals = [frames[i].sharpness_raw for i in readable_idx]
-    ranks = percentile_ranks(sharp_vals)
-    rank_by_i = {readable_idx[k]: ranks[k] for k in range(len(readable_idx))}
+        hb.set_status("relative sharpness percentiles")
+        readable_idx = [
+            i for i, f in enumerate(frames) if f.status != FrameStatus.UNREADABLE
+        ]
+        sharp_vals = [frames[i].sharpness_raw for i in readable_idx]
+        ranks = percentile_ranks(sharp_vals)
+        rank_by_i = {readable_idx[k]: ranks[k] for k in range(len(readable_idx))}
 
-    # Pass 3 — motion
-    readable_paths = [frames[i].filepath for i in readable_idx]
-    motions = motion_series(readable_paths, max_side=max_side)
-    motion_by_i = {readable_idx[k]: motions[k] for k in range(len(readable_idx))}
+        hb.set_status(f"motion series ({len(readable_idx)} frames)")
+        readable_paths = [frames[i].filepath for i in readable_idx]
+        motions = motion_series(readable_paths, max_side=max_side)
+        motion_by_i = {readable_idx[k]: motions[k] for k in range(len(readable_idx))}
 
-    # Pass 4 — decide status
-    out: list[FrameMetadata] = []
-    for i, frame in enumerate(frames):
-        if frame.status == FrameStatus.UNREADABLE:
-            out.append(frame)
-            continue
+        hb.set_status("scoring / hard-reject pass")
+        out: list[FrameMetadata] = []
+        for i, frame in enumerate(frames):
+            if frame.status == FrameStatus.UNREADABLE:
+                out.append(frame)
+                continue
 
-        sharp_pct = rank_by_i.get(i, 50.0)
-        motion = motion_by_i.get(i, 0.0)
-        tex_frac = frame.texture_score / 100.0
+            sharp_pct = rank_by_i.get(i, 50.0)
+            motion = motion_by_i.get(i, 0.0)
+            tex_frac = frame.texture_score / 100.0
 
-        # --- HARD REJECTS ONLY ---
-        if frame.clip_low_pct >= fi.clip_black_pct:
+            if frame.clip_low_pct >= fi.clip_black_pct:
+                out.append(
+                    frame.model_copy(
+                        update={
+                            "status": FrameStatus.CLIPPED_BLACK,
+                            "reject_reason": (
+                                f"near-black clip {frame.clip_low_pct:.1%} >= "
+                                f"{fi.clip_black_pct:.0%}"
+                            ),
+                            "sharpness_percentile": round(sharp_pct, 2),
+                            "motion_from_prev": round(motion, 4),
+                            "quality_score": 0.0,
+                            "confidence_score": 0.0,
+                            "rank_score": 0.0,
+                        }
+                    )
+                )
+                continue
+
+            if frame.clip_high_pct >= fi.clip_white_pct:
+                out.append(
+                    frame.model_copy(
+                        update={
+                            "status": FrameStatus.CLIPPED_WHITE,
+                            "reject_reason": (
+                                f"near-white clip {frame.clip_high_pct:.1%} >= "
+                                f"{fi.clip_white_pct:.0%}"
+                            ),
+                            "sharpness_percentile": round(sharp_pct, 2),
+                            "motion_from_prev": round(motion, 4),
+                            "quality_score": 0.0,
+                            "confidence_score": 0.0,
+                            "rank_score": 0.0,
+                        }
+                    )
+                )
+                continue
+
+            is_smear = (
+                sharp_pct <= fi.motion_smear_sharpness_percentile
+                and tex_frac >= fi.motion_smear_min_texture
+                and motion >= fi.motion_smear_min_flow
+            )
+            if is_smear:
+                out.append(
+                    frame.model_copy(
+                        update={
+                            "status": FrameStatus.MOTION_SMEAR,
+                            "reject_reason": (
+                                f"motion smear: sharp_pct={sharp_pct:.1f}, "
+                                f"texture={tex_frac:.3f}, flow={motion:.2f}"
+                            ),
+                            "sharpness_percentile": round(sharp_pct, 2),
+                            "motion_from_prev": round(motion, 4),
+                            "quality_score": 5.0,
+                            "confidence_score": 5.0,
+                            "rank_score": 5.0,
+                            "is_stationary": False,
+                        }
+                    )
+                )
+                continue
+
+            quality, factors, notes = _soft_quality(frame, sharp_pct, fi)
+            factors["motion_from_prev"] = round(motion, 4)
+            status = FrameStatus.CANDIDATE
+            reject_reason = None
+            if quality < fi.low_rank_threshold:
+                status = FrameStatus.LOW_RANK
+                reject_reason = (
+                    f"soft quality {quality:.1f} < {fi.low_rank_threshold} "
+                    "(still selectable if needed)"
+                )
+                notes.append("low_rank_soft")
+
+            rank = quality + min(15.0, motion * 2.0)
             out.append(
                 frame.model_copy(
                     update={
-                        "status": FrameStatus.CLIPPED_BLACK,
-                        "reject_reason": (
-                            f"near-black clip {frame.clip_low_pct:.1%} >= {fi.clip_black_pct:.0%}"
-                        ),
+                        "status": status,
+                        "reject_reason": reject_reason,
                         "sharpness_percentile": round(sharp_pct, 2),
                         "motion_from_prev": round(motion, 4),
-                        "quality_score": 0.0,
-                        "confidence_score": 0.0,
-                        "rank_score": 0.0,
+                        "is_stationary": motion < fi.min_motion_to_keep,
+                        "quality_score": quality,
+                        "confidence_score": quality,
+                        "rank_score": round(rank, 2),
+                        "confidence_factors": factors,
+                        "notes": notes,
                     }
                 )
             )
-            continue
 
-        if frame.clip_high_pct >= fi.clip_white_pct:
-            out.append(
-                frame.model_copy(
-                    update={
-                        "status": FrameStatus.CLIPPED_WHITE,
-                        "reject_reason": (
-                            f"near-white clip {frame.clip_high_pct:.1%} >= {fi.clip_white_pct:.0%}"
-                        ),
-                        "sharpness_percentile": round(sharp_pct, 2),
-                        "motion_from_prev": round(motion, 4),
-                        "quality_score": 0.0,
-                        "confidence_score": 0.0,
-                        "rank_score": 0.0,
-                    }
-                )
-            )
-            continue
-
-        # Motion smear: poor relative sharpness AND textured scene AND high motion.
-        # Low-texture white walls NEVER enter this branch via texture gate.
-        is_smear = (
-            sharp_pct <= fi.motion_smear_sharpness_percentile
-            and tex_frac >= fi.motion_smear_min_texture
-            and motion >= fi.motion_smear_min_flow
-        )
-        if is_smear:
-            out.append(
-                frame.model_copy(
-                    update={
-                        "status": FrameStatus.MOTION_SMEAR,
-                        "reject_reason": (
-                            f"motion smear: sharp_pct={sharp_pct:.1f}, "
-                            f"texture={tex_frac:.3f}, flow={motion:.2f}"
-                        ),
-                        "sharpness_percentile": round(sharp_pct, 2),
-                        "motion_from_prev": round(motion, 4),
-                        "quality_score": 5.0,
-                        "confidence_score": 5.0,
-                        "rank_score": 5.0,
-                        "is_stationary": False,
-                    }
-                )
-            )
-            continue
-
-        # --- SOFT SCORE ---
-        quality, factors, notes = _soft_quality(frame, sharp_pct, fi)
-        factors["motion_from_prev"] = round(motion, 4)
-        status = FrameStatus.CANDIDATE
-        reject_reason = None
-        if quality < fi.low_rank_threshold:
-            status = FrameStatus.LOW_RANK
-            reject_reason = (
-                f"soft quality {quality:.1f} < {fi.low_rank_threshold} "
-                "(still selectable if needed)"
-            )
-            notes.append("low_rank_soft")
-
-        # Rank score used by keyframe greed: quality + small motion bonus
-        rank = quality + min(15.0, motion * 2.0)
-
-        out.append(
-            frame.model_copy(
-                update={
-                    "status": status,
-                    "reject_reason": reject_reason,
-                    "sharpness_percentile": round(sharp_pct, 2),
-                    "motion_from_prev": round(motion, 4),
-                    "is_stationary": motion < fi.min_motion_to_keep,
-                    "quality_score": quality,
-                    "confidence_score": quality,
-                    "rank_score": round(rank, 2),
-                    "confidence_factors": factors,
-                    "notes": notes,
-                }
-            )
-        )
-
-    return out
+        hb.set_status(f"done {len(out)} frames")
+        return out
 
 
 def analyze_frame(

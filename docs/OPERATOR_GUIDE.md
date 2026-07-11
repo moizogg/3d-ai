@@ -52,14 +52,19 @@ propertyscan export -i walk.mp4 -o ./_out --profile colab_t4 \
   --engine mast3r --train-backend splatfacto
 ```
 
-## Colab day checklist
+## Colab day checklist (real MediaFire dataset)
+
+**Full guide with every cell:** [COLAB_REAL_TEST_GUIDE.md](COLAB_REAL_TEST_GUIDE.md)  
+**Notebook:** `notebooks/colab_real_test.ipynb`  
+**Dataset ZIP:** MediaFire archive (see guide) · **Code:** https://github.com/moizogg/3d-ai  
 
 1. Runtime → GPU (T4)  
-2. Open `notebooks/colab_pipeline.ipynb`  
-3. Install package; optionally install torch + dust3r + mast3r (Phase 4 doc)  
-4. Mock export first  
-5. Real `mast3r` geometry when deps ready  
-6. Splatfacto only after Nerfstudio `ns-train` is installed  
+2. Clone/upload repo → `cd revamped_code`  
+3. Download/unzip dataset (wget or manual upload if MediaFire blocks)  
+4. Mock export first (progress every 10s)  
+5. Install dust3r/mast3r (Phase 4)  
+6. Real `mast3r` then full export  
+7. Splatfacto only after Nerfstudio is installed  
 
 ## Research / benchmarks
 

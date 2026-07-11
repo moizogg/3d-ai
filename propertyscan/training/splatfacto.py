@@ -11,6 +11,7 @@ from pathlib import Path
 from propertyscan.core.config import EngineConfig
 from propertyscan.domain.dataset import TrainingDataset
 from propertyscan.domain.gaussian import GaussianScene, GaussianStats
+from propertyscan.core.progress import ProgressHeartbeat
 from propertyscan.training.base import TrainerBackend, TrainResult
 from propertyscan.training.presets import resolve_train_preset
 
@@ -89,14 +90,19 @@ class SplatfactoTrainer(TrainerBackend):
             logger.info("preset: %s", note)
 
         try:
-            with log_path.open("w", encoding="utf-8") as logf:
-                proc = subprocess.run(
-                    cmd,
-                    stdout=logf,
-                    stderr=subprocess.STDOUT,
-                    check=False,
-                    timeout=config.training.timeout_s or None,
-                )
+            with ProgressHeartbeat(
+                f"splatfacto_{preset.iterations}iters", interval_s=10.0
+            ) as hb:
+                hb.set_status("ns-train running (see ns_train.log for detail)")
+                with log_path.open("w", encoding="utf-8") as logf:
+                    proc = subprocess.run(
+                        cmd,
+                        stdout=logf,
+                        stderr=subprocess.STDOUT,
+                        check=False,
+                        timeout=config.training.timeout_s or None,
+                    )
+                hb.set_status(f"ns-train exit={proc.returncode}")
         except subprocess.TimeoutExpired:
             return TrainResult(
                 success=False,

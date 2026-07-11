@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from propertyscan.core.exceptions import EngineError, StageError
 from propertyscan.core.logging import get_logger
+from propertyscan.core.progress import ProgressHeartbeat
 
 if TYPE_CHECKING:
     from propertyscan.core.context import RunContext
@@ -79,51 +80,61 @@ class Stage(ABC):
         self.logger = get_logger(f"stage.{self.name}")
 
     def run(self, ctx: RunContext) -> StageResult:
-        """Execute the stage with timing and StageError wrapping."""
+        """Execute the stage with timing, 10s progress heartbeats, and error wrapping."""
         self.logger.info("stage started: %s", self.name)
         started = time.perf_counter()
-        try:
-            self.validate(ctx)
-            result = self.execute(ctx)
-            if result.duration_s <= 0:
-                result.duration_s = round(time.perf_counter() - started, 3)
-            result.stage_name = self.name
-            ctx.record_stage(result)
-            self.logger.info(
-                "stage finished: %s (%.2fs, success=%s)",
-                self.name,
-                result.duration_s,
-                result.success,
-            )
-            return result
-        except StageError:
-            raise
-        except EngineError:
-            # Preserve HealthGateError / GeometryError / ValidationError for callers
-            duration = round(time.perf_counter() - started, 3)
-            failure = StageResult(
-                stage_name=self.name,
-                success=False,
-                duration_s=duration,
-                error=str(sys.exc_info()[1]),
-            )
-            ctx.record_stage(failure)
-            raise
-        except Exception as exc:
-            duration = round(time.perf_counter() - started, 3)
-            failure = StageResult(
-                stage_name=self.name,
-                success=False,
-                duration_s=duration,
-                error=str(exc),
-            )
-            ctx.record_stage(failure)
-            raise StageError(
-                f"Stage '{self.name}' failed: {exc}",
-                stage_name=self.name,
-                suggestion="Inspect logs and stage inputs; see exception details.",
-                details={"error": str(exc)},
-            ) from exc
+        # Heartbeat every 10s so Colab/logs show the stage is alive (not stuck).
+        with ProgressHeartbeat(f"stage:{self.name}", interval_s=10.0) as hb:
+            try:
+                self.validate(ctx)
+                hb.set_status("executing")
+                # Allow execute() to update detail via ctx if desired
+                ctx.set("_progress_heartbeat", hb)
+                result = self.execute(ctx)
+                if result.duration_s <= 0:
+                    result.duration_s = round(time.perf_counter() - started, 3)
+                result.stage_name = self.name
+                ctx.record_stage(result)
+                self.logger.info(
+                    "stage finished: %s (%.2fs, success=%s)",
+                    self.name,
+                    result.duration_s,
+                    result.success,
+                )
+                return result
+            except StageError:
+                raise
+            except EngineError:
+                duration = round(time.perf_counter() - started, 3)
+                failure = StageResult(
+                    stage_name=self.name,
+                    success=False,
+                    duration_s=duration,
+                    error=str(sys.exc_info()[1]),
+                )
+                ctx.record_stage(failure)
+                raise
+            except Exception as exc:
+                duration = round(time.perf_counter() - started, 3)
+                failure = StageResult(
+                    stage_name=self.name,
+                    success=False,
+                    duration_s=duration,
+                    error=str(exc),
+                )
+                ctx.record_stage(failure)
+                raise StageError(
+                    f"Stage '{self.name}' failed: {exc}",
+                    stage_name=self.name,
+                    suggestion="Inspect logs and stage inputs; see exception details.",
+                    details={"error": str(exc)},
+                ) from exc
+            finally:
+                if ctx.has("_progress_heartbeat"):
+                    try:
+                        del ctx._state["_progress_heartbeat"]  # type: ignore[attr-defined]
+                    except Exception:
+                        pass
 
     def validate(self, ctx: RunContext) -> None:
         """Optional pre-condition checks. Override in subclasses."""
