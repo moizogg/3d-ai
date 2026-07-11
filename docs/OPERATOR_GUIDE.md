@@ -44,7 +44,7 @@ Outputs: `scene.ply`, `property_scene.json`, `final_report.json`, `provenance.js
 | Profile | When |
 |---------|------|
 | `default` | General |
-| `colab_t4` | Free Colab T4 (tighter keyframes, depth small, swin pairs) |
+| `colab_t4` | Free Colab T4 (keep all frames, depth small, swin pairs) |
 | `quality_gpu` | 4090+ later (more keyframes, depth base) |
 
 ```bash

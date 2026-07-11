@@ -145,6 +145,30 @@ def test_keyframes_selects_budget(tmp_path: Path) -> None:
     assert len(list((tmp_path / "sel").glob("keyframe_*"))) == fs.accepted_count
 
 
+def test_keyframes_unlimited_keeps_all_selectable(tmp_path: Path) -> None:
+    """max_keyframes <= 0 keeps every non-hard-rejected / non-redundant frame."""
+    paths = []
+    for i in range(12):
+        p = tmp_path / f"frame_{i:04d}.jpg"
+        _rich_texture(p, seed=i)
+        paths.append(p)
+    cfg = load_config(apply_env=False)
+    cfg.capture.min_frames = 4
+    cfg.frame_intelligence.max_keyframes = 0  # unlimited
+    cfg.frame_intelligence.min_motion_to_keep = 0.0  # no motion thinning in dedup path
+    frames = analyze_frames(paths, cfg)
+    frames = mark_duplicates(frames, cfg)
+    selectable = [
+        f
+        for f in frames
+        if f.status
+        in (FrameStatus.CANDIDATE, FrameStatus.LOW_RANK, FrameStatus.ACCEPTED)
+    ]
+    fs = select_keyframes(frames, cfg, selected_dir=tmp_path / "all")
+    assert fs.accepted_count == len(selectable)
+    assert fs.accepted_count == 12
+
+
 def test_percentile_ranks_monotone() -> None:
     ranks = percentile_ranks([1.0, 2.0, 3.0, 4.0])
     assert ranks[0] < ranks[-1]

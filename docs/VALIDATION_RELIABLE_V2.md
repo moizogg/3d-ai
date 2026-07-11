@@ -30,7 +30,7 @@
 ### Keyframes
 
 - Greedy temporal diversity + quality rank
-- Budget: `max_keyframes`
+- Budget: `max_keyframes` (`0` or negative = keep all selectable frames)
 - Floor: `min_frames`
 
 ## Config (meaningful keys)

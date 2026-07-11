@@ -27,14 +27,14 @@ def select_keyframes(
       3. Take next frame if cumulative motion since last pick >= min_motion_to_keep
          OR quality is substantially better and mild motion exists.
       4. If under min_frames after pass, fill remaining pool by rank_score.
-      5. Cap at max_keyframes preferring higher rank_score while preserving order.
+      5. Cap at max_keyframes (if > 0). ``max_keyframes <= 0`` keeps all selectable frames.
     """
     min_frames = config.capture.min_frames
-    max_kf = config.frame_intelligence.max_keyframes
+    max_kf_cfg = int(config.frame_intelligence.max_keyframes)
     min_motion = config.frame_intelligence.min_motion_to_keep
+    unlimited = max_kf_cfg <= 0
 
-    pool = [f for f in frames if f.is_selectable() or f.status == FrameStatus.CANDIDATE]
-    # is_selectable covers CANDIDATE/LOW_RANK; also allow any not hard-rejected/redundant
+    # Selectable pool (hard rejects / REDUNDANT stay out)
     pool = [
         f
         for f in frames
@@ -52,40 +52,39 @@ def select_keyframes(
             ),
         )
 
-    chosen: list[FrameMetadata] = []
-    last_idx_pos = -1
-    cum_motion = 0.0
+    max_kf = len(pool) if unlimited else max_kf_cfg
 
-    for frame in pool:
-        if not chosen:
-            chosen.append(frame)
-            last_idx_pos = frame.index
-            cum_motion = 0.0
-            continue
+    # Unlimited (or min_motion <= 0): keep every selectable frame in order
+    if unlimited or min_motion <= 0:
+        chosen: list[FrameMetadata] = list(pool[:max_kf] if not unlimited else pool)
+    else:
+        chosen = []
+        last_idx_pos = -1
 
-        motion = float(frame.motion_from_prev or 0.0)
-        # Approximate motion from last chosen: sum motions along the way is stored
-        # per-frame vs previous candidate; use motion_from_prev as lower bound.
-        # Better: use index distance * soft motion
-        gap = max(frame.index - last_idx_pos, 1)
-        step_motion = motion if motion > 0 else 0.0
-        # If frames were consecutive candidates, motion_from_prev is exact step
-        effective = step_motion * max(1.0, min(gap, 3) * 0.5)
+        for frame in pool:
+            if not chosen:
+                chosen.append(frame)
+                last_idx_pos = frame.index
+                continue
 
-        take = False
-        if effective >= min_motion or motion >= min_motion:
-            take = True
-        elif gap >= max(2, config.frame_intelligence.min_index_gap_fallback + 1):
-            # Time-based fallback when motion estimate is weak but time advanced
-            if frame.rank_score >= (chosen[-1].rank_score - 5):
+            motion = float(frame.motion_from_prev or 0.0)
+            gap = max(frame.index - last_idx_pos, 1)
+            step_motion = motion if motion > 0 else 0.0
+            effective = step_motion * max(1.0, min(gap, 3) * 0.5)
+
+            take = False
+            if effective >= min_motion or motion >= min_motion:
                 take = True
+            elif gap >= max(2, config.frame_intelligence.min_index_gap_fallback + 1):
+                if frame.rank_score >= (chosen[-1].rank_score - 5):
+                    take = True
 
-        if take:
-            chosen.append(frame)
-            last_idx_pos = frame.index
+            if take:
+                chosen.append(frame)
+                last_idx_pos = frame.index
 
-        if len(chosen) >= max_kf:
-            break
+            if len(chosen) >= max_kf:
+                break
 
     # Fill if under min_frames: add best remaining by rank_score (even REDUNDANT
     # is not in pool — but all CANDIDATE/LOW_RANK are).
@@ -150,6 +149,7 @@ def select_keyframes(
         "validation_mode=reliable_v2",
         "hard_reject=clip|unreadable|motion_smear_only",
         "redundancy=motion_based_not_dhash",
+        "max_keyframes=unlimited" if unlimited else f"max_keyframes={max_kf_cfg}",
     ]
 
     if selected_dir is not None:

@@ -78,6 +78,7 @@ class DeviceSection(BaseModel):
 
 class CaptureSection(BaseModel):
     video_fps: float = 2.0
+    # ``0`` or negative = no hard cap on extracted/accepted candidates
     max_candidate_frames: int = 300
     min_frames: int = 8
     min_resolution: int = 480
@@ -98,7 +99,7 @@ class FrameIntelligenceSection(BaseModel):
       - Redundancy uses camera motion, not aggressive perceptual hashes.
     """
 
-    # Selection budget
+    # Selection budget. ``0`` or negative = no hard cap (keep all selectable frames).
     max_keyframes: int = 120
     # Soft rank: below this percentile-quality → LOW_RANK (still selectable)
     low_rank_threshold: float = 25.0

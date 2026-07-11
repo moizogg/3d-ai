@@ -29,7 +29,9 @@ def test_load_default_config() -> None:
 def test_colab_t4_profile_merge() -> None:
     cfg = load_config(profile="colab_t4", apply_env=False)
     assert cfg.engine.profile == "colab_t4"
-    assert cfg.frame_intelligence.max_keyframes == 80
+    # Keep-all-frames policy: 0 = unlimited extract + unlimited keyframes
+    assert cfg.capture.max_candidate_frames == 0
+    assert cfg.frame_intelligence.max_keyframes == 0
     assert cfg.depth.size == "small"
     # Still full large foundation model IDs
     assert "ViTLarge" in cfg.geometry.mast3r_model

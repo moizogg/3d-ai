@@ -12,6 +12,7 @@
 | **Working directory** | **`/content/3d-ai`** (repo root — not `revamped_code/`) |
 | GPU | Colab Free **T4** |
 | Progress | `[PROGRESS] …` every **10 seconds** |
+| Frames | **`colab_t4` keeps all selectable frames** (`max_keyframes: 0`, `max_candidate_frames: 0`) — no 80-cap |
 
 ---
 
@@ -19,7 +20,8 @@
 
 1. Colab → **Runtime → GPU (T4)**  
 2. Repo root must contain `propertyscan/`, `configs/`, `pyproject.toml`  
-3. If MediaFire wget fails → download on PC → upload to `/content/data/archive.zip`
+3. If MediaFire wget fails → download on PC → upload to `/content/data/archive.zip`  
+4. **Keep-all frames:** a full ~400-image tour is used end-to-end. Mock export is fine; real MASt3R on T4 may be slow or OOM — if so, lower `pair_graph` further or use a 4090 later, do **not** re-enable an 80-frame cap unless you choose to
 
 ---
 
@@ -97,9 +99,33 @@ print("OK", ZIP, "MB", ZIP.stat().st_size / 1e6)
 
 ## Cell B2 — Unzip + find INPUT
 
+**What “Top-level” means:** only names **directly inside** the extract folder (one level).  
+It is **not** a full count of every image in the ZIP.
+
+Example:
+
+```text
+kaggle_scene/                 ← EXTRACT root (top-level)
+  folder_a/                   ← listed as DIR at top-level
+    img_0001.jpg              ← NOT listed in top-level (nested)
+    ...
+    img_0400.jpg
+  readme.txt                  ← listed as file at top-level
+```
+
+So if you see **39 images at top-level**, the other **~361** are almost always in **subfolders**. That is normal for Kaggle ZIPs.
+
+Cell B2 below:
+
+1. Prints top-level (quick peek)  
+2. Counts **all** images recursively  
+3. Picks the folder with the **most** images (or a video)  
+4. If images are scattered across many folders, **copies them into one flat folder** for the pipeline  
+
 ```python
 from pathlib import Path
 import zipfile
+import shutil
 
 DATA = Path("/content/data")
 ZIP = DATA / "archive.zip"
@@ -109,30 +135,61 @@ EXTRACT.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(ZIP, "r") as zf:
     zf.extractall(EXTRACT)
 
-print("Top-level:")
+print("=== Top-level only (NOT all files in zip) ===")
 for p in sorted(EXTRACT.iterdir())[:40]:
-    print(" ", p.name, "DIR" if p.is_dir() else f"file {p.stat().st_size}")
+    kind = "DIR" if p.is_dir() else f"file {p.stat().st_size}"
+    print(" ", p.name, kind)
 
 VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
-def find_input(root: Path):
-    vids = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT]
-    if vids:
-        return sorted(vids, key=lambda p: -p.stat().st_size)[0]
-    best, best_n = None, 0
-    for d in [root] + [p for p in root.rglob("*") if p.is_dir()]:
-        try:
-            n = sum(1 for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMG_EXT)
-        except Exception:
-            n = 0
-        if n > best_n:
-            best, best_n = d, n
-    return best
+all_images = [
+    p for p in EXTRACT.rglob("*")
+    if p.is_file() and p.suffix.lower() in IMG_EXT
+]
+all_videos = [
+    p for p in EXTRACT.rglob("*")
+    if p.is_file() and p.suffix.lower() in VIDEO_EXT
+]
+print("=== Full recursive counts ===")
+print("Total images in zip tree:", len(all_images))
+print("Total videos in zip tree:", len(all_videos))
 
-INPUT = find_input(EXTRACT)
+def count_images_in_dir(d: Path) -> int:
+    try:
+        return sum(1 for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMG_EXT)
+    except Exception:
+        return 0
+
+# Prefer a single folder that already holds most images
+best, best_n = None, 0
+for d in [EXTRACT] + [p for p in EXTRACT.rglob("*") if p.is_dir()]:
+    n = count_images_in_dir(d)
+    if n > best_n:
+        best, best_n = d, n
+
+if all_videos:
+    INPUT = sorted(all_videos, key=lambda p: -p.stat().st_size)[0]
+    print("Using VIDEO:", INPUT)
+elif best is not None and best_n >= max(8, int(0.8 * len(all_images)) if all_images else 8):
+    # One folder has ~all images
+    INPUT = best
+    print(f"Using image folder with {best_n} images:", INPUT)
+elif len(all_images) >= 8:
+    # Scattered across subfolders → flatten into one INPUT dir
+    INPUT = DATA / "all_frames_flat"
+    if INPUT.exists():
+        shutil.rmtree(INPUT)
+    INPUT.mkdir(parents=True)
+    for i, src in enumerate(sorted(all_images)):
+        dest = INPUT / f"frame_{i:05d}{src.suffix.lower()}"
+        shutil.copy2(src, dest)
+    print(f"Images were nested/scattered. Flattened {len(all_images)} →", INPUT)
+else:
+    INPUT = None
+
 print("INPUT =>", INPUT)
-assert INPUT is not None, "Could not find video or image folder"
+assert INPUT is not None, "Could not find video or enough images"
 ```
 
 ---

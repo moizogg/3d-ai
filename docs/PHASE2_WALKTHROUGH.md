@@ -106,7 +106,7 @@ See [VALIDATION_RELIABLE_V2.md](VALIDATION_RELIABLE_V2.md).
 | `capture.min_frames` | Fail if fewer keyframes |
 | `frame_intelligence.blur_threshold` | Laplacian floor |
 | `frame_intelligence.phash_threshold` | Dedup Hamming |
-| `frame_intelligence.max_keyframes` | Output cap (80 on `colab_t4`) |
+| `frame_intelligence.max_keyframes` | Output cap; `0` = keep all (`colab_t4` uses unlimited) |
 
 ---
 

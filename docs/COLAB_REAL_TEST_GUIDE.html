@@ -116,12 +116,19 @@
     <strong>Code:</strong> <a href="https://github.com/moizogg/3d-ai" target="_blank" rel="noopener">github.com/moizogg/3d-ai</a><br />
     <strong>Dataset:</strong>
     <a href="https://download853.mediafire.com/rtmlk9ypemegyIXh1yTx9nFxnjYYGn5l5Y7jgmzy4HCb7cekTEY__64r_wSqKfc3Cns4Iohj56JzG_hKv6SpxVLLkM8y_ucaQCHgrNLuS14oFWQmjlp4IuwbXMKOG3aP7MOpotpk3DGZor2n-Kk5rH-m3LedwvDJXId-PhLfrTqM_Q/zknvd5nfvsygnsr/archive.zip" target="_blank" rel="noopener">MediaFire archive.zip</a><br />
-    <strong>Progress:</strong> every ~10s you should see <code>[PROGRESS] … still running…</code>
+    <strong>Progress:</strong> every ~10s you should see <code>[PROGRESS] … still running…</code><br />
+    <strong>Frames:</strong> <code>colab_t4</code> keeps <em>all</em> selectable frames (<code>max_keyframes: 0</code>, <code>max_candidate_frames: 0</code>) — no 80-cap
   </div>
 
   <div class="warn">
     <strong>Working directory for ALL cells:</strong> <code>/content/3d-ai</code><br />
     Package is at the <em>repo root</em> (<code>propertyscan/</code>, <code>pyproject.toml</code>). Do <strong>not</strong> use <code>/content/3d-ai/revamped_code</code>.
+  </div>
+
+  <div class="warn">
+    <strong>Keep-all frames:</strong> a full ~400-image tour is used end-to-end. Mock export is fine.
+    Real MASt3R on T4 may be slow or OOM — if so, tighten <code>pair_graph</code> or use a larger GPU later.
+    Do <strong>not</strong> re-enable an 80-frame cap unless you choose to.
   </div>
 
   <h2>Order of cells</h2>
@@ -239,16 +246,23 @@ assert ZIP.exists() and ZIP.stat().st_size > 1_000_000, "Upload archive.zip to /
 print("OK", ZIP, "MB", ZIP.stat().st_size / 1e6)</code></pre>
   </div>
 
+  <div class="warn">
+    <strong>“Top-level” ≠ all images.</strong> It only lists names <em>directly</em> inside the extract folder.
+    If you see 39 images at top-level but the ZIP has ~400, the rest are inside <strong>subfolders</strong> — normal for Kaggle.
+    Cell B2 now also prints <strong>Total images in zip tree</strong> (full recursive count) and flattens if needed.
+  </div>
+
   <div class="cell" id="cell-b2">
     <div class="cell-head">
       <div>
-        <div class="cell-title">Cell B2 — Unzip + find INPUT</div>
-        <div class="cell-sub">Sets Python variable INPUT for later cells</div>
+        <div class="cell-title">Cell B2 — Unzip + find INPUT (all nested images)</div>
+        <div class="cell-sub">Recursive count + flatten if images are scattered</div>
       </div>
       <button type="button" class="copy-btn" data-target="code-b2">Copy</button>
     </div>
     <pre id="code-b2"><code>from pathlib import Path
 import zipfile
+import shutil
 
 DATA = Path("/content/data")
 ZIP = DATA / "archive.zip"
@@ -258,30 +272,58 @@ EXTRACT.mkdir(parents=True, exist_ok=True)
 with zipfile.ZipFile(ZIP, "r") as zf:
     zf.extractall(EXTRACT)
 
-print("Top-level:")
+print("=== Top-level only (NOT all files in zip) ===")
 for p in sorted(EXTRACT.iterdir())[:40]:
-    print(" ", p.name, "DIR" if p.is_dir() else f"file {p.stat().st_size}")
+    kind = "DIR" if p.is_dir() else f"file {p.stat().st_size}"
+    print(" ", p.name, kind)
 
 VIDEO_EXT = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 IMG_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
-def find_input(root: Path):
-    vids = [p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT]
-    if vids:
-        return sorted(vids, key=lambda p: -p.stat().st_size)[0]
-    best, best_n = None, 0
-    for d in [root] + [p for p in root.rglob("*") if p.is_dir()]:
-        try:
-            n = sum(1 for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMG_EXT)
-        except Exception:
-            n = 0
-        if n > best_n:
-            best, best_n = d, n
-    return best
+all_images = [
+    p for p in EXTRACT.rglob("*")
+    if p.is_file() and p.suffix.lower() in IMG_EXT
+]
+all_videos = [
+    p for p in EXTRACT.rglob("*")
+    if p.is_file() and p.suffix.lower() in VIDEO_EXT
+]
+print("=== Full recursive counts ===")
+print("Total images in zip tree:", len(all_images))
+print("Total videos in zip tree:", len(all_videos))
 
-INPUT = find_input(EXTRACT)
+def count_images_in_dir(d: Path) -> int:
+    try:
+        return sum(1 for f in d.iterdir() if f.is_file() and f.suffix.lower() in IMG_EXT)
+    except Exception:
+        return 0
+
+best, best_n = None, 0
+for d in [EXTRACT] + [p for p in EXTRACT.rglob("*") if p.is_dir()]:
+    n = count_images_in_dir(d)
+    if n > best_n:
+        best, best_n = d, n
+
+if all_videos:
+    INPUT = sorted(all_videos, key=lambda p: -p.stat().st_size)[0]
+    print("Using VIDEO:", INPUT)
+elif best is not None and best_n >= max(8, int(0.8 * len(all_images)) if all_images else 8):
+    INPUT = best
+    print(f"Using image folder with {best_n} images:", INPUT)
+elif len(all_images) >= 8:
+    INPUT = DATA / "all_frames_flat"
+    if INPUT.exists():
+        shutil.rmtree(INPUT)
+    INPUT.mkdir(parents=True)
+    for i, src in enumerate(sorted(all_images)):
+        dest = INPUT / f"frame_{i:05d}{src.suffix.lower()}"
+        shutil.copy2(src, dest)
+    print(f"Images were nested/scattered. Flattened {len(all_images)} →", INPUT)
+else:
+    INPUT = None
+
 print("INPUT =>", INPUT)
-assert INPUT is not None, "Could not find video or image folder"</code></pre>
+assert INPUT is not None, "Could not find video or enough images"</code></pre>
   </div>
 
   <h2 id="c1">Part C — Run pipeline</h2>
@@ -417,7 +459,7 @@ files.download("/content/propertyscan_results.zip")</code></pre>
     <tr><td><code>No module named propertyscan</code></td><td><code>%cd /content/3d-ai</code> then <code>pip install -e .</code></td></tr>
     <tr><td>Wrong folder</td><td>Stay in <code>/content/3d-ai</code> (not revamped_code)</td></tr>
     <tr><td>MASt3R missing</td><td>Run Cell C2</td></tr>
-    <tr><td>CUDA OOM</td><td>Use fewer frames; <code>colab_t4</code> profile already uses swin-5</td></tr>
+    <tr><td>CUDA OOM</td><td>Optional: temporarily set <code>max_keyframes</code> &gt; 0, or use smaller <code>pair_graph</code> / larger GPU. Profile defaults keep all frames + swin-5</td></tr>
     <tr><td>No [PROGRESS] lines</td><td>Reinstall package from latest GitHub with <code>core/progress.py</code></td></tr>
   </table>
 

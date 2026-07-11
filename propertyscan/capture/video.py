@@ -81,7 +81,8 @@ class VideoCaptureAdapter(CaptureAdapter):
         out_dir.mkdir(parents=True, exist_ok=True)
         video_path = Path(manifest.source_path)
         fps = config.capture.video_fps
-        max_frames = config.capture.max_candidate_frames
+        # ``max_candidate_frames <= 0`` = extract all fps-sampled frames (no hard cap)
+        max_frames = int(config.capture.max_candidate_frames)
 
         frames = _extract_ffmpeg(video_path, out_dir, fps=fps, max_frames=max_frames)
         if not frames:
@@ -118,10 +119,11 @@ def _extract_ffmpeg(
         f"fps={fps}",
         "-q:v",
         "2",
-        "-frames:v",
-        str(max_frames),
-        pattern,
     ]
+    # Only apply a hard frame count when max_frames > 0
+    if max_frames > 0:
+        cmd.extend(["-frames:v", str(max_frames)])
+    cmd.append(pattern)
     try:
         subprocess.run(
             cmd,
@@ -155,7 +157,8 @@ def _extract_opencv(
     paths: list[Path] = []
     idx = 0
     saved = 0
-    while saved < max_frames:
+    unlimited = max_frames <= 0
+    while unlimited or saved < max_frames:
         ok, frame = cap.read()
         if not ok:
             break
