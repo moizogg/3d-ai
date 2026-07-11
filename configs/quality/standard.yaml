@@ -1,0 +1,4 @@
+training:
+  quality: standard
+  iterations:
+    standard: 15000

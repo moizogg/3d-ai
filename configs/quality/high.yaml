@@ -1,0 +1,7 @@
+training:
+  quality: high
+  iterations:
+    high: 30000
+
+geometry:
+  global_align_iters: 400

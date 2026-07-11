@@ -1,0 +1,99 @@
+# PropertyScan AI — default engine configuration
+# Frame validation: reliable_v2 (soft rank + motion redundancy). NOT legacy Laplacian/dHash.
+
+engine:
+  name: propertyscan
+  version: "0.1.0"
+  profile: default
+
+run:
+  experiment_id: null
+  seed: 42
+  abort_on_health_fail: true
+
+device:
+  prefer_cuda: true
+  allow_cpu_geometry: false
+  empty_cache_between_stages: true
+
+capture:
+  video_fps: 2.0
+  max_candidate_frames: 300
+  min_frames: 8
+  min_resolution: 480
+  image_extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  video_extensions: [".mp4", ".mov", ".avi", ".mkv", ".webm"]
+
+frame_intelligence:
+  # Keyframe budget
+  max_keyframes: 120
+  low_rank_threshold: 25.0
+
+  # Hard rejects only (true failures)
+  clip_black_pct: 0.92
+  clip_white_pct: 0.92
+  clip_pixel_low: 8.0
+  clip_pixel_high: 247.0
+
+  # Texture-aware motion smear (NOT absolute laplacian blur)
+  low_texture_edge_density: 0.04
+  motion_smear_sharpness_percentile: 8.0
+  motion_smear_min_texture: 0.06
+  motion_smear_min_flow: 2.5
+
+  # Motion-based redundancy (NOT aggressive dHash)
+  min_motion_to_keep: 0.8
+  motion_max_side: 320
+  min_index_gap_fallback: 1
+
+  # Legacy keys kept so old overlays don't crash (ignored by reliable validator)
+  blur_threshold: 6.0
+  phash_threshold: 2
+  min_brightness: 15.0
+  max_brightness: 245.0
+  min_contrast: 8.0
+  low_confidence_threshold: 40.0
+
+geometry:
+  engine: mast3r
+  prefer_quality: true
+  mast3r_model: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+  dust3r_model: "naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt"
+  batch_size: 1
+  pair_graph: swin-5
+  global_align_iters: 300
+  min_registered_fraction: 0.85
+
+depth:
+  enabled: true
+  provider: depth_anything_v2
+  size: small
+  max_resolution: 1080
+
+health:
+  min_score: 40.0
+  max_needle_probability: 0.75
+  abort_below_min_score: true
+
+training:
+  quality: standard
+  backend: splatfacto          # mock | splatfacto (use mock for CI / no ns-train)
+  iterations:
+    draft: 7000
+    standard: 15000
+    high: 30000
+  downscale_factor: 4
+  cull_alpha_thresh: 0.01
+  reset_alpha_every: 30
+  reduce_iters_for_dense_geometry: true
+  dense_geometry_max_iters: 8000
+  require_health_pass: true
+  timeout_s: 0
+
+export:
+  formats: ["ply"]
+  write_provenance: true
+
+logging:
+  level: INFO
+  format: console

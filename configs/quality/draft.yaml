@@ -1,0 +1,10 @@
+training:
+  quality: draft
+  iterations:
+    draft: 7000
+
+frame_intelligence:
+  max_keyframes: 40
+
+geometry:
+  global_align_iters: 150

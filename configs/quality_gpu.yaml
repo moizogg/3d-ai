@@ -1,0 +1,40 @@
+# Profile: strong local GPU (e.g. RTX 4090 / better) — denser geometry budget.
+# Same model IDs as T4; more keyframes, stronger depth, denser pairing when VRAM allows.
+
+engine:
+  profile: quality_gpu
+
+device:
+  prefer_cuda: true
+  allow_cpu_geometry: false
+  empty_cache_between_stages: true
+
+capture:
+  video_fps: 2.0
+  max_candidate_frames: 400
+  min_frames: 12
+
+frame_intelligence:
+  max_keyframes: 160
+  min_motion_to_keep: 0.6
+  low_rank_threshold: 20.0
+
+geometry:
+  engine: mast3r
+  prefer_quality: true
+  mast3r_model: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+  dust3r_model: "naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt"
+  batch_size: 1
+  pair_graph: complete      # may fall back to swin-5 for very large N at runtime
+  global_align_iters: 400
+
+depth:
+  enabled: true
+  size: base
+  max_resolution: 1080
+
+training:
+  quality: high
+  backend: splatfacto
+  downscale_factor: 2
+  dense_geometry_max_iters: 12000

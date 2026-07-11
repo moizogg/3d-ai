@@ -1,0 +1,40 @@
+# Profile: Google Colab Free — NVIDIA Tesla T4 (~16GB VRAM)
+# Uses the same official LARGE foundation-model weights; tightens pair windows / depth size.
+
+engine:
+  profile: colab_t4
+
+device:
+  prefer_cuda: true
+  allow_cpu_geometry: false
+  empty_cache_between_stages: true
+
+capture:
+  video_fps: 2.0
+  max_candidate_frames: 200
+  min_frames: 8
+
+frame_intelligence:
+  max_keyframes: 80
+  min_motion_to_keep: 0.8
+  low_rank_threshold: 25.0
+
+geometry:
+  engine: mast3r
+  prefer_quality: true
+  mast3r_model: "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+  dust3r_model: "naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt"
+  batch_size: 1
+  pair_graph: swin-5
+  global_align_iters: 300
+
+depth:
+  enabled: true
+  size: small
+  max_resolution: 768
+
+training:
+  quality: standard
+  backend: splatfacto
+  downscale_factor: 4
+  dense_geometry_max_iters: 8000
